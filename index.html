@@ -48,6 +48,14 @@
             const { data } = await _supabase.from('flights').select('*');
             data.forEach(updatePlane);
         }
+
+        const params = new URLSearchParams(window.location.search);
+const userId = params.get('user'); // Looks for ?user=123 in the URL
+
+if (userId) {
+    // Only show the marker that matches this ID
+    // and use map.flyTo([lat, lng], 10) to focus on them!
+}
         loadFlights();
     </script>
 </body>
