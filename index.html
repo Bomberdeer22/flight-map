@@ -1,62 +1,98 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Live Flight Map</title>
+    <title>Live Flight Tracker</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; }
-        #map { width: 100%; height: 100vh; background: #0b141a; }
+        body { margin: 0; padding: 0; }
+        #map { height: 100vh; width: 100vw; background: #0b141d; }
+        .leaflet-popup-content-wrapper { background: #1a2634; color: white; border-radius: 8px; }
+        .leaflet-popup-tip { background: #1a2634; }
     </style>
 </head>
 <body>
     <div id="map"></div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <script>
-        // 1. Initialize Supabase
-        const supabaseUrl = 'https://qimuousqsjcmqrxqyvsb.supabase.co';
-        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpbXVvdXNxc2pjbXFyeHF5dnNiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MDM4NzgsImV4cCI6MjA4NjA3OTg3OH0.wlnsLt951OO5i-jKlDA-U0KLNmW78HEp-GQIejGBQGI';
-        const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+        // --- CONFIGURATION ---
+        const SB_URL = "https://qimuousqsjcmqrxqyvsb.supabase.co";
+        const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpbXVvdXNxc2pjbXFyeHF5dnNiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MDM4NzgsImV4cCI6MjA4NjA3OTg3OH0.wlnsLt951OO5i-jKlDA-U0KLNmW78HEp-GQIejGBQGI";
+        const supabase = supabase.createClient(SB_URL, SB_KEY);
 
-        // 2. Initialize Map
+        // --- MAP SETUP ---
         const map = L.map('map').setView([20, 0], 2);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
 
-        const aircraft = {}; // Store plane markers
+        const markers = {};
+        
+        // Get URL parameters (e.g., ?user=12345)
+        const urlParams = new URLSearchParams(window.location.search);
+        const targetUser = urlParams.get('user');
 
-        // 3. Logic to handle updates
-        function updatePlane(data) {
-            const { id, lat, lng, callsign } = data;
-            if (aircraft[id]) {
-                aircraft[id].setLatLng([lat, lng]);
-            } else {
-                aircraft[id] = L.marker([lat, lng]).addTo(map).bindPopup(callsign);
-            }
+        // --- PLANE ICON ---
+        const planeIcon = L.icon({
+            iconUrl: 'https://cdn-icons-png.flaticon.com/512/5736/5736173.png',
+            iconSize: [32, 32],
+            iconAnchor: [16, 16],
+            popupAnchor: [0, -16]
+        });
+
+        // --- UPDATE LOGIC ---
+        async function updatePlanes() {
+            const { data, error } = await supabase.from('flights').select('*');
+            if (error) return console.error(error);
+
+            // Track IDs currently in the DB to remove landed planes
+            const currentIds = data.map(f => f.id.toString());
+
+            data.forEach(flight => {
+                const flightId = flight.id.toString();
+                const pos = [flight.lat, flight.lng];
+                const popupContent = `
+                    <div style="text-align: center;">
+                        <b style="color: #3498db; font-size: 1.1em;">${flight.username}</b><br>
+                        <span style="color: #bdc3c7;">Callsign: ${flight.callsign}</span>
+                    </div>
+                `;
+
+                if (markers[flightId]) {
+                    // Update existing marker position
+                    markers[flightId].setLatLng(pos);
+                } else {
+                    // Create new marker
+                    markers[flightId] = L.marker(pos, {icon: planeIcon})
+                        .addTo(map)
+                        .bindPopup(popupContent);
+                }
+
+                // --- AUTO-ZOOM LOGIC ---
+                // If this is the specific user requested in the URL, follow them
+                if (targetUser && flightId === targetUser) {
+                    map.setView(pos, 7); // Zoom level 7 is good for flight following
+                    if (!markers[flightId].isPopupOpen()) {
+                        markers[flightId].openPopup();
+                    }
+                }
+            });
+
+            // Remove planes that are no longer in the database (Landed)
+            Object.keys(markers).forEach(id => {
+                if (!currentIds.includes(id)) {
+                    map.removeLayer(markers[id]);
+                    delete markers[id];
+                }
+            });
         }
 
-        // 4. Listen for Real-time updates
-        _supabase
-            .channel('flights-channel')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'flights' }, payload => {
-                updatePlane(payload.new);
-            })
-            .subscribe();
-
-        // 5. Initial Load: Fetch all current flights
-        async function loadFlights() {
-            const { data } = await _supabase.from('flights').select('*');
-            data.forEach(updatePlane);
-        }
-
-        const params = new URLSearchParams(window.location.search);
-const userId = params.get('user'); // Looks for ?user=123 in the URL
-
-if (userId) {
-    // Only show the marker that matches this ID
-    // and use map.flyTo([lat, lng], 10) to focus on them!
-}
-        loadFlights();
+        // Refresh every 10 seconds (faster than the bot's 30s for smoothness)
+        setInterval(updatePlanes, 10000);
+        updatePlanes();
     </script>
 </body>
 </html>
