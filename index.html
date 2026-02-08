@@ -33,12 +33,13 @@
         const targetUser = urlParams.get('user');
 
         const planeIcon = L.icon({
+            // A reliable, open-source silhouette of a plane
             iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/3/3d/ICAO_aircraft_type_indicator_silhouette.png',
-            iconSize: [25, 25],
-            iconAnchor: [12, 12],
-            popupAnchor: [0, -12]
+            iconSize: [30, 30],       // Made it slightly larger to be visible
+            iconAnchor: [15, 15],     // Center the icon on the coordinate
+            popupAnchor: [0, -15]     // Popup appears above the plane
         });
-
+        
         async function updatePlanes() {
             try {
                 const { data, error } = await _supabase.from('flights').select('*');
