@@ -32,12 +32,17 @@
         const urlParams = new URLSearchParams(window.location.search);
         const targetUser = urlParams.get('user');
 
-        const planeIcon = L.icon({
-            // A reliable, open-source silhouette of a plane
-            iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/3/3d/ICAO_aircraft_type_indicator_silhouette.png',
-            iconSize: [30, 30],       // Made it slightly larger to be visible
-            iconAnchor: [15, 15],     // Center the icon on the coordinate
-            popupAnchor: [0, -15]     // Popup appears above the plane
+        const planeSVG = `
+            <svg style="transform: rotate(90deg);" viewBox="0 0 24 24" width="32" height="32" xmlns="http://www.w3.org/2000/svg">
+                <path d="M21,16L21,14L13,9L13,3.5A1.5,1.5 0 0,0 11.5,2A1.5,1.5 0 0,0 10,3.5V9L2,14V16L10,13.5V19L8,20.5V22L11.5,21L15,22V20.5L13,19V13.5L21,16Z" fill="#3498db"/>
+            </svg>`;
+        
+        const planeIcon = L.divIcon({
+            html: planeSVG,
+            className: 'plane-mirror', // Leaflet needs a class, even if empty
+            iconSize: [32, 32],
+            iconAnchor: [16, 16],
+            popupAnchor: [0, -16]
         });
         
         async function updatePlanes() {
