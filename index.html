@@ -17,22 +17,18 @@
 <body>
     <div id="map"></div>
 
-   <script>
-        // --- CONFIGURATION ---
+    <script>
         const SB_URL = "https://qimuousqsjcmqrxqyvsb.supabase.co";
         const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpbXVvdXNxc2pjbXFyeHF5dnNiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MDM4NzgsImV4cCI6MjA4NjA3OTg3OH0.wlnsLt951OO5i-jKlDA-U0KLNmW78HEp-GQIejGBQGI";
         
-        // Use window.supabase to ensure the library is grabbed correctly
         const { createClient } = window.supabase;
         const _supabase = createClient(SB_URL, SB_KEY);
 
-        // --- MAP SETUP ---
         const map = L.map('map').setView([20, 0], 2);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '© OpenStreetMap'
-        }).addTo(map);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
         const markers = {};
+        const polylines = {}; 
         const urlParams = new URLSearchParams(window.location.search);
         const targetUser = urlParams.get('user');
 
@@ -51,42 +47,56 @@
                 const currentIds = data.map(f => f.id.toString());
 
                 data.forEach(flight => {
-                    const flightId = flight.id.toString();
+                    const id = flight.id.toString();
                     const pos = [flight.lat, flight.lng];
-                    const popupContent = `
-                        <div style="text-align: center; font-family: sans-serif;">
-                            <b style="color: #3498db;">${flight.username || 'Unknown Pilot'}</b><br>
-                            <span style="color: #666;">${flight.callsign}</span>
-                        </div>
-                    `;
-
-                    if (markers[flightId]) {
-                        markers[flightId].setLatLng(pos);
+                    const route = [[flight.dep_lat, flight.dep_lng], [flight.dest_lat, flight.dest_lng]];
+                    
+                    if (markers[id]) {
+                        markers[id].setLatLng(pos);
+                        if (polylines[id]) polylines[id].setLatLngs(route);
                     } else {
-                        markers[flightId] = L.marker(pos, {icon: planeIcon})
-                            .addTo(map)
-                            .bindPopup(popupContent);
+                        const m = L.marker(pos, {icon: planeIcon}).addTo(map);
+                        m.bindPopup(`<b style="color:#3498db">${flight.username}</b><br>${flight.callsign}`);
+                        
+                        m.on('click', () => {
+                            if (polylines[id]) map.removeLayer(polylines[id]);
+                            polylines[id] = L.polyline(route, {
+                                color: '#3498db', weight: 2, dashArray: '5, 10', opacity: 0.6
+                            }).addTo(map);
+                        });
+                        markers[id] = m;
                     }
 
-                    if (targetUser && flightId === targetUser) {
+                    if (targetUser && id === targetUser) {
                         map.setView(pos, 6); 
-                        if (!markers[flightId].isPopupOpen()) markers[flightId].openPopup();
+                        if (!markers[id].isPopupOpen()) markers[id].openPopup();
+                        // Auto-show line for focused user
+                        if (!polylines[id]) {
+                            polylines[id] = L.polyline(route, { color: '#3498db', weight: 2, dashArray: '5, 10' }).addTo(map);
+                        }
                     }
                 });
 
-                // Cleanup landed planes
                 Object.keys(markers).forEach(id => {
                     if (!currentIds.includes(id)) {
                         map.removeLayer(markers[id]);
-                        delete markers[id];
+                        if (polylines[id]) map.removeLayer(polylines[id]);
+                        delete markers[id]; delete polylines[id];
                     }
                 });
-            } catch (err) {
-                console.error("Supabase Sync Error:", err);
-            }
+            } catch (err) { console.error(err); }
         }
 
-        setInterval(updatePlanes, 5000); // 5 second refresh for smoothness
+        map.on('click', (e) => {
+            if (e.originalEvent.target.id === 'map') {
+                Object.keys(polylines).forEach(id => {
+                    map.removeLayer(polylines[id]);
+                    delete polylines[id];
+                });
+            }
+        });
+
+        setInterval(updatePlanes, 5000);
         updatePlanes();
     </script>
 </body>
